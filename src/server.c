@@ -23,18 +23,17 @@ void *handle_client(void *arg) {
 }
 
 int main(int argc, char const *argv[]) {
-    int server_fd, new_socket;
     struct sockaddr_in address;
-    int opt = 1;
     int addrlen = sizeof(address);
+    int opt = 1;
 
     int serverfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd == 0) {
+    if (serverfd == 0) {
         perror("socket creation error");
         exit(EXIT_FAILURE);
     }
 
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+    if (setsockopt(serverfd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
         perror("setsockopt error");
         exit(EXIT_FAILURE);
     }
@@ -44,20 +43,22 @@ int main(int argc, char const *argv[]) {
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(PORT);
 
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+    if (bind(serverfd, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("bind failed");
         exit(EXIT_FAILURE);
     }
 
-    if (listen(server_fd, SOMAXCONN) < 0) {
+    if (listen(serverfd, SOMAXCONN) < 0) {
         perror("listen failed");
         exit(EXIT_FAILURE);
     }
 
     printf("Server listening on port %d...\n", PORT);
 
+
+    int new_socket;
     while (1) {
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0) {
+        if ((new_socket = accept(serverfd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0) {
             perror("Accept failed");
             exit(EXIT_FAILURE);
         }
