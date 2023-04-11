@@ -5,20 +5,31 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <errno.h>
 
 #define PORT 8080
 
 void *handle_client(void *arg) {
-    int socket_fd = *(int *)arg;
+    int socketfd = *(int *)arg;
     char buffer[1024] = {0};
 
-    int valread = read(socket_fd, buffer, 1024);
-    
+    int valread = read(socketfd, buffer, 1024);
+    if (valread < 0) {
+        perror("read error");
+        close(socketfd);
+        pthread_exit(NULL);
+    }
+
+
     printf("Received message: %s\n", buffer);
     char *response = "Test";
-    send(socket_fd, response, strlen(response), 0);
     
-    close(socket_fd);
+    long sendMsg = send(socketfd, response, strlen(response), 0);
+    if (sendMsg < 0) {
+        perror("send error");
+    }
+
+    close(socketfd);
     pthread_exit(NULL);
 }
 
@@ -56,9 +67,12 @@ int main(int argc, char const *argv[]) {
     printf("Server listening on port %d...\n", PORT);
 
 
-    int new_socket;
     while (1) {
-        if ((new_socket = accept(serverfd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0) {
+        int new_socket = accept(serverfd, (struct sockaddr *)&address, (socklen_t *)&addrlen);
+        if (new_socket < 0 && errno == EINTR) {
+            continue;
+        }
+        else {
             perror("Accept failed");
             exit(EXIT_FAILURE);
         }
