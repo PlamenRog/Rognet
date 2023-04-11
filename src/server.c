@@ -69,12 +69,13 @@ int main(int argc, char const *argv[]) {
 
     while (1) {
         int new_socket = accept(serverfd, (struct sockaddr *)&address, (socklen_t *)&addrlen);
-        if (new_socket < 0 && errno == EINTR) {
-            continue;
-        }
-        else {
-            perror("Accept failed");
-            exit(EXIT_FAILURE);
+        if (new_socket < 0) {
+            if (errno == EINTR)
+                continue;
+            else {
+                perror("Accept failed");
+                exit(EXIT_FAILURE);
+            }
         }
 
         printf("New client connected: %s:%d\n", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
