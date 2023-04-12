@@ -3,13 +3,67 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/unistd.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <openssl/aes.h>
 #include <openssl/evp.h>
 
 #define PORT 8080
 #define BUFFER_SIZE 16
+
+
+void handle_error(const char* message) {
+    perror(message);
+    exit(EXIT_FAILURE);
+}
+
+
+// Encrypt message using AES-256 in CBC mode with a random IV
+void encrypt_message(const char* plaintext, const char* key, char* ciphertext) {
+    // Generate a random IV
+    unsigned char iv[AES_BLOCK_SIZE];
+    RAND_bytes(iv, AES_BLOCK_SIZE);
+
+    // Set up the encryption context
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, (const unsigned char*)key, iv);
+
+    // Encrypt the message using AES in CBC mode
+    int ciphertext_len;
+    EVP_EncryptUpdate(ctx, (unsigned char*)ciphertext, &ciphertext_len, (const unsigned char*)plaintext, strlen(plaintext));
+    int final_len;
+    EVP_EncryptFinal_ex(ctx, (unsigned char*)ciphertext + ciphertext_len, &final_len);
+
+    // Append the IV to the ciphertext
+    memcpy(ciphertext + ciphertext_len + final_len, iv, AES_BLOCK_SIZE);
+    ciphertext[ciphertext_len + final_len + AES_BLOCK_SIZE] = '\0';
+
+    // Clean up
+    EVP_CIPHER_CTX_free(ctx);
+}
+
+
+// Decrypt message using AES-256 in CBC mode
+void decrypt_message(const char* ciphertext, const char* key, char* plaintext) {
+    // Get the IV from the end of the ciphertext
+    unsigned char iv[AES_BLOCK_SIZE];
+    memcpy(iv, ciphertext + strlen(ciphertext) - AES_BLOCK_SIZE, AES_BLOCK_SIZE);
+
+    // Set up the decryption context
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, (const unsigned char*)key, iv);
+
+    // Decrypt the message using AES in CBC mode
+    int plaintext_len;
+    EVP_DecryptUpdate(ctx, (unsigned char*)plaintext, &plaintext_len, (const unsigned char*)ciphertext, strlen(ciphertext) - AES_BLOCK_SIZE);
+    int final_len;
+    EVP_DecryptFinal_ex(ctx, (unsigned char*)plaintext + plaintext_len, &final_len);
+    plaintext[plaintext_len + final_len] = '\0';
+
+    // Clean up
+    EVP_CIPHER_CTX_free(ctx);
+}
+
 
 int authenticate(int sockfd) {
     char username[64], password[64], buffer[1024];
@@ -44,6 +98,7 @@ int authenticate(int sockfd) {
         return EXIT_FAILURE;
     }
 }
+
 
 int key_exchange(int sockfd) {
     char buffer[1024];
@@ -110,6 +165,7 @@ void encrypt_data(unsigned char *plaintext, int plaintext_len, unsigned char *ke
 
     EVP_CIPHER_CTX_free(ctx);
 }
+
 
 int main() {
     int sockfd, newsockfd;
