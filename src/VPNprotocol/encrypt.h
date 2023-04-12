@@ -1,73 +1,156 @@
 #ifndef ENCRYPT_HEADER_FILE
 #define ENCRYPT_HEADER_FILE
 
-
-#include <stdio.h>
-#include <stdlib.h>
+#include <sys/unistd.h>
 #include <string.h>
-#include <math.h>
-#include <openssl/evp.h>
+#include <openssl/aes.h>
+#include <openssl/rand.h>
 
+// Encrypt message using AES-256 in CBC mode with a random IV
+void encrypt_message(const char* plaintext, const char* key, char* ciphertext) {
+    // Generate a random IV
+    unsigned char iv[AES_BLOCK_SIZE];
+    RAND_bytes(iv, AES_BLOCK_SIZE);
 
-int generate_key(unsigned char key[]) {
-    // Define the message to encrypt
-    unsigned char message[] = "Hello, world!";
-    int message_len = strlen((const char*)message);
+    // Set up the encryption context
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, (const unsigned char*)key, iv);
 
-    // Define the key and IV
-    unsigned char iv[] = "myinitialvector1";
+    // Encrypt the message using AES in CBC mode
+    int ciphertext_len;
+    EVP_EncryptUpdate(ctx, (unsigned char*)ciphertext, &ciphertext_len, (const unsigned char*)plaintext, strlen(plaintext));
+    int final_len;
+    EVP_EncryptFinal_ex(ctx, (unsigned char*)ciphertext + ciphertext_len, &final_len);
 
-    // Allocate memory for the encrypted message
-    void *encrypted_message = malloc(message_len + EVP_MAX_BLOCK_LENGTH);
-    memset(encrypted_message, 0, message_len + EVP_MAX_BLOCK_LENGTH);
+    // Append the IV to the ciphertext
+    memcpy(ciphertext + ciphertext_len + final_len, iv, AES_BLOCK_SIZE);
+    ciphertext[ciphertext_len + final_len + AES_BLOCK_SIZE] = '\0';
 
-    // Create and initialize the encryption context
-    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-    EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv);
-
-    // Encrypt the message
-    int encrypted_len = 0;
-    EVP_EncryptUpdate(ctx, (unsigned char *)encrypted_message, &encrypted_len, message, message_len);
-    int final_len = 0;
-    EVP_EncryptFinal_ex(ctx, (unsigned char *)encrypted_message + encrypted_len, &final_len);
-
-    // Print the encrypted message in hexadecimal format
-    unsigned char * msgToRet = (unsigned char *)encrypted_message;
-    printf("Encrypted message: ");
-    for (int i = 0; i < encrypted_len + final_len; i++) {
-        printf("%02x", msgToRet[i]);
-    }
-    printf("\n");
-
-    // Free the memory allocated for the encrypted message and the encryption context
-    free(encrypted_message);
+    // Clean up
     EVP_CIPHER_CTX_free(ctx);
 }
 
 
-// Function to compute the modular exponentiation (base^exp) mod mod
-unsigned long long modexp(unsigned long long base, unsigned long long exp, unsigned long long mod)
-{
-    unsigned long long result = 1;
-    base = base % mod;
-    while (exp > 0) {
-        if (exp & 1) {
-            result = (result * base) % mod;
-        }
-        base = (base * base) % mod;
-        exp >>= 1;
+// Decrypt message using AES-256 in CBC mode
+void decrypt_message(const char* ciphertext, const char* key, char* plaintext) {
+    // Get the IV from the end of the ciphertext
+    unsigned char iv[AES_BLOCK_SIZE];
+    memcpy(iv, ciphertext + strlen(ciphertext) - AES_BLOCK_SIZE, AES_BLOCK_SIZE);
+
+    // Set up the decryption context
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, (const unsigned char*)key, iv);
+
+    // Decrypt the message using AES in CBC mode
+    int plaintext_len;
+    EVP_DecryptUpdate(ctx, (unsigned char*)plaintext, &plaintext_len, (const unsigned char*)ciphertext, strlen(ciphertext) - AES_BLOCK_SIZE);
+    int final_len;
+    EVP_DecryptFinal_ex(ctx, (unsigned char*)plaintext + plaintext_len, &final_len);
+    plaintext[plaintext_len + final_len] = '\0';
+
+    // Clean up
+    EVP_CIPHER_CTX_free(ctx);
+}
+
+int authenticate(int sockfd) {
+    char username[64], password[64], buffer[1024];
+
+    printf("Enter your username: ");
+    scanf("%s", username);
+    printf("Enter your password: ");
+    scanf("%s", password);
+
+    // Send username and password to the server
+    sprintf(buffer, "%s:%s", username, password);
+    int n = write(sockfd, buffer, strlen(buffer));
+    if (n < 0) {
+        perror("Error sending authentication details");
+        return EXIT_FAILURE;
     }
-    return result;
+
+    // Wait for response from the server
+    memset(buffer, 0, sizeof(buffer));
+    n = read(sockfd, buffer, sizeof(buffer));
+    if (n < 0) {
+        perror("Error reading server response");
+        return EXIT_FAILURE;
+    }
+
+    if (strcmp(buffer, "OK") == 0) {
+        printf("Authentication successful.\n");
+        return 0;
+    } else {
+        printf("Authentication failed.\n");
+        return EXIT_FAILURE;
+    }
 }
 
 
-// Function to compute the shared secret key
-unsigned long long diffie_hellman(unsigned long long p, unsigned long long g, unsigned long long a, unsigned long long b)
-{
-    unsigned long long A = modexp(g, a, p);
-    unsigned long long B = modexp(g, b, p);
-    unsigned long long secret = modexp(B, a, p);
-    return secret;
+
+void encrypt_data(unsigned char *plaintext, int plaintext_len, unsigned char *key, unsigned char *iv, unsigned char *ciphertext) {
+    EVP_CIPHER_CTX *ctx;
+
+    int ciphertext_len, len;
+
+    if (!(ctx = EVP_CIPHER_CTX_new())) {
+        perror("Error creating cipher context");
+        exit(EXIT_FAILURE);
+    }
+
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv) != 1) {
+        perror("Error initializing encryption");
+        exit(EXIT_FAILURE);
+    }
+
+    if (EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len) != 1) {
+        perror("Error encrypting data");
+        exit(EXIT_FAILURE);
+    }
+
+    ciphertext_len = len;
+
+    if (EVP_EncryptFinal_ex(ctx, ciphertext + len, &len) != 1) {
+        perror("Error finalizing encryption");
+        exit(EXIT_FAILURE);
+    }
+
+    ciphertext_len += len;
+
+    EVP_CIPHER_CTX_free(ctx);
 }
+
+int key_exchange(int sockfd) {
+    char buffer[1024];
+    int n;
+
+    // Generate a random key
+    srand(time(NULL));
+    int key = rand() % 10000;
+
+    // Send the key to the server
+    sprintf(buffer, "%d", key);
+    n = write(sockfd, buffer, strlen(buffer));
+    if (n < 0) {
+        perror("Error sending encryption key");
+        return EXIT_FAILURE;
+    }
+
+    // Wait for response from the server
+    memset(buffer, 0, sizeof(buffer));
+    n = read(sockfd, buffer, sizeof(buffer));
+    if (n < 0) {
+        perror("Error reading server response");
+        return EXIT_FAILURE;
+    }
+
+    if (strcmp(buffer, "OK") == 0) {
+        printf("Key exchange successful.\n");
+        return key;
+    } else {
+        printf("Key exchange failed.\n");
+        return EXIT_FAILURE;
+    }
+}
+
 
 #endif
