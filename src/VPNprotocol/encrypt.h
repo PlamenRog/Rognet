@@ -5,15 +5,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <openssl/evp.h>
 
-int generate_key() {
+
+int generate_key(unsigned char key[]) {
     // Define the message to encrypt
     unsigned char message[] = "Hello, world!";
     int message_len = strlen((const char*)message);
 
     // Define the key and IV
-    unsigned char key[] = "mysecretkey12345";
     unsigned char iv[] = "myinitialvector1";
 
     // Allocate memory for the encrypted message
@@ -41,6 +42,32 @@ int generate_key() {
     // Free the memory allocated for the encrypted message and the encryption context
     free(encrypted_message);
     EVP_CIPHER_CTX_free(ctx);
+}
+
+
+// Function to compute the modular exponentiation (base^exp) mod mod
+unsigned long long modexp(unsigned long long base, unsigned long long exp, unsigned long long mod)
+{
+    unsigned long long result = 1;
+    base = base % mod;
+    while (exp > 0) {
+        if (exp & 1) {
+            result = (result * base) % mod;
+        }
+        base = (base * base) % mod;
+        exp >>= 1;
+    }
+    return result;
+}
+
+
+// Function to compute the shared secret key
+unsigned long long diffie_hellman(unsigned long long p, unsigned long long g, unsigned long long a, unsigned long long b)
+{
+    unsigned long long A = modexp(g, a, p);
+    unsigned long long B = modexp(g, b, p);
+    unsigned long long secret = modexp(B, a, p);
+    return secret;
 }
 
 #endif

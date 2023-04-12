@@ -1,11 +1,9 @@
+// This isnt going to be used, its just for tests
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <unistd.h>
-#include <pthread.h>
-#include <errno.h>
 
 #include "encrypt.h"
 
@@ -24,7 +22,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     
-    if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) <0) {
+    if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
         perror("Connection failed");
         exit(EXIT_FAILURE);
     }
