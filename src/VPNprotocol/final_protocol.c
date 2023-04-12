@@ -9,7 +9,7 @@
 #include <openssl/evp.h>
 
 #define PORT 8080
-#define BLOCK_SIZE 16
+#define BUFFER_SIZE 16
 
 int authenticate(int sockfd) {
     char username[64], password[64], buffer[1024];
@@ -80,92 +80,100 @@ int key_exchange(int sockfd) {
 
 
 void encrypt_data(unsigned char *plaintext, int plaintext_len, unsigned char *key, unsigned char *iv, unsigned char *ciphertext) {
-  EVP_CIPHER_CTX *ctx;
+    EVP_CIPHER_CTX *ctx;
 
-  int ciphertext_len, len;
+    int ciphertext_len, len;
 
-  if (!(ctx = EVP_CIPHER_CTX_new())) {
-    perror("Error creating cipher context");
-    exit(1);
-  }
+    if (!(ctx = EVP_CIPHER_CTX_new())) {
+        perror("Error creating cipher context");
+        exit(1);
+    }
 
-  if (EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv) != 1) {
-    perror("Error initializing encryption");
-    exit(1);
-  }
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv) != 1) {
+        perror("Error initializing encryption");
+        exit(1);
+    }
 
-  if (EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len) != 1) {
-    perror("Error encrypting data");
-    exit(1);
-  }
+    if (EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len) != 1) {
+        perror("Error encrypting data");
+        exit(1);
+    }
 
-  ciphertext_len = len;
+    ciphertext_len = len;
 
-  if (EVP_EncryptFinal_ex(ctx, ciphertext + len, &len) != 1) {
-    perror("Error finalizing encryption");
-    exit(1);
-  }
+    if (EVP_EncryptFinal_ex(ctx, ciphertext + len, &len) != 1) {
+        perror("Error finalizing encryption");
+        exit(1);
+    }
 
-  ciphertext_len += len;
+    ciphertext_len += len;
 
-  EVP_CIPHER_CTX_free(ctx);
+    EVP_CIPHER_CTX_free(ctx);
 }
 
 int main() {
-  int sockfd, n;
-  struct sockaddr_in serv_addr;
-
-  sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) {
-    perror("Error opening socket");
-    return -1;
-  }
-
-  memset(&serv_addr, 0, sizeof(serv_addr));
-  serv_addr.sin_family = AF_INET;
-  serv_addr.sin_port = htons(PORT);
-  serv_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-
-  if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-    perror("Error connecting to server");
-    return -1;
-  }
-
-  // Perform authentication
-  if (authenticate(sockfd) != 0) {
-    close(sockfd);
-    return -1;
-  }
-
-  // Perform key exchange
-  int key = key_exchange(sockfd);
-  if (key < 0) {
-    close(sockfd);
-    return -1;
-  }
-
-  // Read data from user
-  char plaintext[1024];
-  printf("Enter plaintext: ");
-  scanf("%s", plaintext);
-
-  // Encrypt data
-  unsigned char iv[BLOCK_SIZE], ciphertext[1024];
-  memset(iv, 0, BLOCK_SIZE);
-  encrypt_data((unsigned char *)plaintext, strlen(plaintext), (unsigned char *)&key, iv, ciphertext);
-
-  // Send encrypted data to server
-  n = write(sockfd, ciphertext, strlen((char *)ciphertext));
-  if (n < 0) {
-    perror("Error sending encrypted data");
-    close(sockfd);
-    return -1;
-  }
-
-  printf("Data sent successfully.\n");
-
-  close(sockfd);
-
-  return 0;
+    int sockfd, newsockfd;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_len;
+    char buffer[BUFFER_SIZE];
+    
+    // create socket
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        perror("Error creating socket");
+        exit(1);
+    }
+    
+    // initialize server address structure
+    bzero((char *) &server_addr, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    
+    // bind socket to server address
+    if (bind(sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
+        perror("Error binding socket");
+        exit(1);
+    }
+    
+    // listen for incoming connections
+    listen(sockfd, 5);
+    printf("Server started and listening on port %d\n", PORT);
+    
+    while (1) {
+        // accept incoming connection
+        client_len = sizeof(client_addr);
+        newsockfd = accept(sockfd, (struct sockaddr *) &client_addr, &client_len);
+        if (newsockfd < 0) {
+            perror("Error accepting connection");
+            exit(1);
+        }
+        
+        printf("Client connected: %s\n", inet_ntoa(client_addr.sin_addr));
+        
+        while (1) {
+            // receive message from client
+            bzero(buffer, BUFFER_SIZE);
+            ssize_t bytes_received = recv(newsockfd, buffer, BUFFER_SIZE, 0);
+            if (bytes_received < 0) {
+                perror("Error receiving message");
+                exit(1);
+            } else if (bytes_received == 0) {
+                printf("Client disconnected\n");
+                close(newsockfd);
+                break;
+            }
+            
+            printf("Received message from client (%s): %s", inet_ntoa(client_addr.sin_addr), buffer);
+            
+            // send message back to client
+            ssize_t bytes_sent = send(newsockfd, buffer, strlen(buffer), 0);
+            if (bytes_sent < 0) {
+                perror("Error sending message");
+                exit(1);
+            }
+        }
+    }
+    
+    return 0;
 }
-
