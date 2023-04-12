@@ -34,19 +34,24 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    // Send message to server
-    char message[1024];
-    strcpy(message, "Hello from client");
-    send(clientfd, message, strlen(message), 0);
+    printf("Client successfully connected at: %s:%d\n", inet_ntoa(server.sin_addr), noths(server.sin_port));
 
-    // Receive response from server
-    memset(message, 0, sizeof(message));
-    recv(clientfd, message, 1024, 0);
+    while(1) {
+        // Send message to server
+        char message[1024];
+        strcpy(message, "Hello from client");
+        send(clientfd, message, strlen(message), 0);
 
-    printf("Server message: %s\n", message);
+        // Receive response from server
+        memset(message, 0, sizeof(message));
+        recv(clientfd, message, 1024, 0);
 
-    // Close socket
-    close(clientfd);
+        printf("Server message: %s\n", message);
+
+        if (strncmp(message, "exit", 4) == 0) {
+            break;
+        }
+    }
 
     return 0;
 }
